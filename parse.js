@@ -73,7 +73,7 @@ canvasext.parse = (function(){
 			});
 
 	}
-
+	
 	return {initModule: initModule,
 			stateMap: stateMap};
 })();

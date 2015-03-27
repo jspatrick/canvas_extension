@@ -32,6 +32,12 @@ canvasext.popup = (function(){
 		host: "https://courses.gsb.stanford.edu" // placeholder.  Should be replaced by code to get it
 	};
 
+
+	/*
+	 Set the page to be in a "loading" or "ready" state
+	 @param status: true if loading, else false
+	 @type status: bool
+	*/
 	function setLoadingStatus(status){
 		if (status) {
 			jqueryMap.$statusBar.addClass("loading");
@@ -39,7 +45,9 @@ canvasext.popup = (function(){
 		} else {
 			jqueryMap.$statusBar.html("Ready");
 			jqueryMap.$statusBar.removeClass("loading");
+		}
 	}
+
 
 	function registerFileIDs(moduleIDMap){
 		stateMap.moduleIdMap = moduleIDMap;
@@ -66,7 +74,6 @@ canvasext.popup = (function(){
 				function setupCheckbox(fileID, $moduleCheckboxContainer){
 					function result (){
 						
-						
 						itemUrl = stateMap.host + "/courses/" + stateMap.course_id + "/modules/items/" + fileID;
 
 						$.ajax({
@@ -75,30 +82,29 @@ canvasext.popup = (function(){
 							success: function(data, textStatus, xhr){
 								var link = $(data).find("#content").find("a")[0];
 								var linkUrl = link.attributes["href"].value;
-								var linkTitle = link.childNodes[0].toString();
-								linkTitle.replace(RegExp("^Download ?"),"");
+								var linkTitle = link.text;
+
+								//strip the "Download " prefix off the title
+								linkTitle = linkTitle.replace(RegExp("^Download ?"),""); 
+
 								$downloadItem = $(configMap.item_html);
 								$downloadItem.find(".download-title").html(linkTitle);
 								$downloadItem.attr("url", linkUrl);
 								jqueryMap.download_items[fileID] = $downloadItem;
 								$moduleCheckboxContainer.append($downloadItem);
-
 						
 							},
 							error: function(jqXHR, textStatus, errorThrown){
-								console.log("Error!");
+								console.log("Error getting download from %s", url);
 								checkedIDs += 1;
 							}
 						});
 					}
 					return result;
-
 				};
 
 				var fileID = fileIDs[i];
-
 				setupCheckbox(fileID, $moduleCheckboxContainer)();
-
 			}
 
 			jqueryMap.$moduleContainer.append($moduleDiv);
@@ -121,10 +127,10 @@ canvasext.popup = (function(){
 		jqueryMap.$header.addClass("hidden");
 	}
 
-
 	function initModule(){
 		setJqueryMap();
 		setLoadingStatus(true);
+
 		//Ask for all the module URLS from the page
 		chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
 			stateMap.current_tab = tabs[0];
@@ -144,12 +150,9 @@ canvasext.popup = (function(){
 
 	}
 
-	function setupDownloadItem(fileID, callback){
-	}
 
 	return {
 		"initModule": initModule,
-		"setupDownloadItem": setupDownloadItem,
 		"stateMap": stateMap,
 		"jqueryMap": jqueryMap
 	};
