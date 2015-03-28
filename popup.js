@@ -1,10 +1,13 @@
 // Copyright (c) 2014 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
+
+
 var canvasext = {};
 
 canvasext.popup = (function(){
 	var configMap = {
+		downloadToModuleFolder: true,						  
 		course_regex: new RegExp("/?courses/([0-9]+)/.*"),
 		module_section_html: String() + 
 			'<div class="module">' + 
@@ -24,12 +27,12 @@ canvasext.popup = (function(){
 
 	//Tracks jquery objects on the page
 	var jqueryMap = {
-		download_items: {}
 	}; 
 
 	//Tracks various other states on the page.
 	var stateMap = {
 		host: "https://courses.gsb.stanford.edu" // placeholder.  Should be replaced by code to get it
+
 	};
 
 	/*
@@ -47,30 +50,53 @@ canvasext.popup = (function(){
 		}
 	}
 
+
 	/*
 	 Download the selected modules
-	 
 	 */
+	
 	function handleDownloadButtonClick(event){
 		console.log("Downloading...");
 		console.log(event);
-		//get all checked items
-		//get urls for checked items.
-		//start downloads
-	}
+		cboxes = getCheckedItems();
 
-	function handleAllCboxChanged(event){
-		console.log("Changing...");
-		console.log(event);
-		
-		for (var moduleName in jqueryMap.moduleCboxes){
-			for (i in jqueryMap.moduleCboxes[moduleName]){
-				jqueryMap.moduleCboxes[moduleName][i].attr("checked", true);
-				
+		fileUrls = new Array();
+		for (i in cboxes){
+			var $cbox = cboxes[i];
+			
+			var url = stateMap.host + "/" + $cbox.attr('url');			
+			var fileTitle = $cbox.attr('title');
+			var module = $cbox.attr('module');
+			if (configMap.downloadToModuleFolder){
+				var savePath = "canvasext/" + fileTitle;
+			} else {
 				
 			}
-		}
+
+			console.log("Saving to %s", savePath);
+			var shown = false;
+			chrome.downloads.download({"url": url,
+									   "filename": savePath,
+									   "saveAs": false},
+									  function(downloadId) {
+										  console.log("Downloaded %i", downloadId);
+										  if (!shown){
+											  chrome.downloads.show(downloadId);
+											  shown = true;
+										  }
+									  });
 		
+		}
+	}
+
+
+	function handleAllCboxChanged(event){
+		var checked = $(event.target).prop("checked");
+		for (var moduleName in jqueryMap.moduleCboxes){
+			for (i in jqueryMap.moduleCboxes[moduleName]){
+				jqueryMap.moduleCboxes[moduleName][i].prop('checked', checked);				
+			}
+		}
 	}
 
 	function createCheckBoxes(moduleIDMap){
@@ -80,10 +106,11 @@ canvasext.popup = (function(){
 		jqueryMap.modules = {};
 		jqueryMap.moduleCboxes = {};
 
+		var moduleTitle;
 		for (moduleTitle in moduleIDMap){
 			if (!moduleIDMap.hasOwnProperty(moduleTitle)) continue;
 			
-			jqueryMap.moduleCboxes[moduleTitle] = {};
+			jqueryMap.moduleCboxes[moduleTitle] = new Array();
 
 			fileIDs = moduleIDMap[moduleTitle];
 			$moduleDiv = $(configMap.module_section_html);
@@ -92,10 +119,8 @@ canvasext.popup = (function(){
 			
 			
 			for (i in fileIDs){
-				var checkedIDs = 0;
-				
-				
-				function setupCheckbox(fileID, $moduleCheckboxContainer){
+				//Create a closure around some variables since the ajax call is async
+				function setupCheckbox(fileID, moduleTitle, $moduleCheckboxContainer){
 					function result (){
 						
 						itemUrl = stateMap.host + "/courses/" + stateMap.course_id + "/modules/items/" + fileID;
@@ -104,25 +129,33 @@ canvasext.popup = (function(){
 							type: 'GET',
 							url: itemUrl,
 							success: function(data, textStatus, xhr){
-								var link = $(data).find("#content").find("a")[0];
-								var linkUrl = link.attributes["href"].value;
-								var linkTitle = link.text;
-
-								//strip the "Download " prefix off the title
-								linkTitle = linkTitle.replace(RegExp("^Download ?"),""); 
-
 								var $downloadItem = $(configMap.item_html);
-								$downloadItem.find(".download-title").html(linkTitle);
-								$downloadItem.attr("url", linkUrl);
-								jqueryMap.download_items[fileID] = $downloadItem;
-								$moduleCheckboxContainer.append($downloadItem);
 								var $downloadCbox = $downloadItem.find("input");
-								jqueryMap.moduleCboxes[moduleTitle].append($downloadCbox);
-						
+								$downloadCbox.attr("module", moduleTitle);
+
+								var link = $(data).find("#content").find("a")[0];
+								//TODO: Handle this more gracefully - display an uncheckable item
+								var linkError = false;
+								if (!link){
+									console.log("Error: Cannot find link from %s",itemUrl);
+									linkError = true;
+									
+
+								} else {
+									var linkUrl = link.attributes["href"].value;
+									var linkTitle = link.text;
+									linkTitle = linkTitle.replace(RegExp("^Download ?"),""); 
+									$downloadItem.find(".download-title").html(linkTitle);
+									$downloadCbox.attr("url", linkUrl);
+									$downloadCbox.attr("title", linkTitle);
+									$moduleCheckboxContainer.append($downloadItem);
+									jqueryMap.moduleCboxes[moduleTitle].push($downloadCbox);
+								}
+								//strip the "Download " prefix off the title
+								
 							},
 							error: function(jqXHR, textStatus, errorThrown){
 								console.log("Error getting download from %s", url);
-								checkedIDs += 1;
 							}
 						});
 					}
@@ -130,7 +163,7 @@ canvasext.popup = (function(){
 				};
 
 				var fileID = fileIDs[i];
-				setupCheckbox(fileID, $moduleCheckboxContainer)();
+				setupCheckbox(fileID, moduleTitle, $moduleCheckboxContainer)();
 			}
 
 			jqueryMap.$moduleContainer.append($moduleDiv);
@@ -139,12 +172,33 @@ canvasext.popup = (function(){
 		console.log(Object.keys(stateMap.moduleIdMap));
 	}
 
+
+	function getCheckedItems(){
+		var result = new Array();
+		for (moduleTitle in jqueryMap.moduleCboxes){
+			for (i in jqueryMap.moduleCboxes[moduleTitle]){
+				var $cbox = jqueryMap.moduleCboxes[moduleTitle][i];
+				
+				if ($cbox.prop("checked")){
+					result.push($cbox);
+				}
+			}
+		}
+		return result;
+	}
+
+
+	function checkAllItems(){
+	}
+
+
 	function setJqueryMap(){
 		jqueryMap.$moduleContainer = $("#modules");
 		jqueryMap.$statusBar = $("#statusbar");
 		jqueryMap.$header = $("#head");
 		jqueryMap.$downloadAllCbox = $("#download-all-cbox");
 		jqueryMap.$downloadBtn = $("#download-btn");
+		jqueryMap.$downloadIframe = $("#download-iframe");
 	}
 
 	//if no files are available, display it in the page
