@@ -3,18 +3,11 @@ var canvasext = {};
 canvasext.parse = (function(){
 	var configMap = {
 
-		link_html: String() + 
-			'<div class="link-section">' +
-			'<input id="link-checkbox" type="checkbox">'+ 
-			'<a href="#" class="link-title">Link</a>' +
-			'</div>',
-
 		//Class to use to search for divs with module links
 		module_class: ".item-group-condensed",
 		module_item_class: ".module-item-title",
 		module_title_selector: "span .name",
-		file_id_regexp: new RegExp(".*/modules/items/([0-9]+)/?"),
-		link_extension: "/file"
+		file_id_regexp: new RegExp(".*/modules/items/([0-9]+)/?")
 	};
 	
 	var jqueryMap = {};
@@ -26,6 +19,7 @@ canvasext.parse = (function(){
 		var modules = $(configMap.module_class);
 		var moduleItemTitles = $(configMap.module_item_class);
 		stateMap.fileIDs = {};
+		stateMap.fileTitles = {};
 		
 		//loop through each module
 		modules.each(function(idx, elem){
@@ -45,11 +39,12 @@ canvasext.parse = (function(){
 				if ($type_icon.attr("title") == "Attachment"){			
 					var $link = $item.find("a");
 					var ref = $link.attr("href");
-					console.log(ref);
+					var title = $link.html();
 					//the ref is the link to the page that displays the file.  Each file has an "id", 
 					//which is part of the url.  Get the file ID from the url.
 					var fileId = configMap.file_id_regexp.exec(ref)[1];
 					stateMap.fileIDs[moduleName].push(fileId);
+					stateMap.fileTitles[fileId] = title;
 				}
 			});
 		});
@@ -62,13 +57,21 @@ canvasext.parse = (function(){
 		makeModuleFileMap();
 		console.log(stateMap.fileIDs);
 
+		//get the course title
+		var courseTitle = $.trim($(".h1").contents().filter(function() {
+			return this.nodeType === 3;
+		}).text());
+		
+		
 		chrome.runtime.onMessage.addListener(
 			function(request, sender, sendResponse){
 				console.log("Got message:");
 				console.log(request);
 				if (request.type == "getFileIDs"){
 					console.log("Sending File IDs..");
-					sendResponse({"fileIDs": stateMap.fileIDs});
+					sendResponse({"fileIDs": stateMap.fileIDs,
+								  "fileTitles": stateMap.fileTitles,
+								  "courseTitle": courseTitle});
 				}
 			});
 

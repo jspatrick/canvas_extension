@@ -50,14 +50,17 @@ value "popup.html".
 	 .module {
 	   margin: 10px 0px;
 	   border-top: solid 1px #ddd;
-	   
 	 }
+
 	 .module-title {
 	   font-size: 16px;
 	   font-weight: 500;
 	   color: #666;
 	   margin: 5px 0px 7px 0px;
-	   
+	 }
+
+	 .module-file-container {
+	   padding-left: 15px;
 	 }
 
 	 #statusbar {
@@ -66,11 +69,9 @@ value "popup.html".
 	   right: 0px;
 	   bottom: 0px;
 	   height: 25px;
+	   padding-left: 10px;
 
-	 }
 
-	 .loading {
-	   background-color: rgb(244, 216, 157);
 	 }
 
 
@@ -82,6 +83,10 @@ value "popup.html".
        overflow: hidden;
 	   
      }
+
+	 .download-error {
+	   background-color: rgb(255, 186, 186);
+	 }
 
 	 .download-all {
 	   float: left;
@@ -122,8 +127,8 @@ value "popup.html".
 	<div id="modules">
 	  
 	</div>
-	<div id="statusbar" class="loading">
-
+	<div id="statusbar">
+	  
 	</div>
   </body>
 </html>

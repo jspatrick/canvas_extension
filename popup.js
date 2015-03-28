@@ -3,12 +3,60 @@
 // found in the LICENSE file.
 
 
+
 var canvasext = {};
+
+
+//sanitize from https://github.com/parshap/node-sanitize-filename/
+canvasext.sanitize = (function(){
+	/**
+	 * Replaces characters in strings that are illegal/unsafe for filenames.
+	 * Unsafe characters are either removed or replaced by a substitute set
+	 * in the optional `options` object.
+	 *
+	 * Illegal Characters on Various Operating Systems
+	 * / ? < > \ : * | "
+	 * https://kb.acronis.com/content/39790
+	 *
+	 * Unicode Control codes
+	 * C0 0x00-0x1f & C1 (0x80-0x9f)
+	 * http://en.wikipedia.org/wiki/C0_and_C1_control_codes
+	 *
+	 * Reserved filenames on Unix-based systems (".", "..")
+	 * Reserved filenames in Windows ("CON", "PRN", "AUX", "NUL", "COM1",
+	 * "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9", 
+	 * "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", and
+	 * "LPT9") case-insesitively and with or without filename extensions.
+	 *
+	 * @param  {String} input   Original filename
+	 * @param  {Object} options {replacement: String}
+	 * @return {String}         Sanitized filename
+	 */
+
+	var illegalRe = /[\/\?<>\\:\*\|":]/g;
+	var controlRe = /[\x00-\x1f\x80-\x9f]/g;
+	var reservedRe = /^\.+$/;
+	var windowsReservedRe = /^(con|prn|aux|nul|com[0-9]|lpt[0-9])(\..*)?$/i;
+
+	function sanitize(input, replacement) {
+		return input
+			.replace(illegalRe, replacement)
+			.replace(controlRe, replacement)
+			.replace(reservedRe, replacement)
+			.replace(windowsReservedRe, replacement);
+	}
+	
+	return {sanitize: sanitize};
+
+})();
+
 
 canvasext.popup = (function(){
 	var configMap = {
 		downloadToModuleFolder: true,						  
 		course_regex: new RegExp("/?courses/([0-9]+)/.*"),
+		loading_color: "rgb(255, 195, 102)",
+		ready_color: "#aaaaaa",
 		module_section_html: String() + 
 			'<div class="module">' + 
 			'  <div class="module-title">' + 
@@ -17,7 +65,6 @@ canvasext.popup = (function(){
 			'  <div class="module-file-container">' + 
 			'  </div>' +
 			'</div>\n',
-
 		item_html: String() + 
 			'		<div class="download">' + 
 			'		  <input class="download-checkbox" type="checkbox"></input>' +
@@ -39,14 +86,14 @@ canvasext.popup = (function(){
 	 Set the page to be in a "loading" or "ready" state
 	 @param status: true if loading, else false
 	 @type status: bool
-	*/
+	 */
 	function setLoadingStatus(status){
 		if (status) {
-			jqueryMap.$statusBar.addClass("loading");
+			jqueryMap.$statusBar.css('background-color', configMap.loading_color);
 			jqueryMap.$statusBar.html("Loading...");
 		} else {
+			jqueryMap.$statusBar.css('background-color', configMap.ready_color);
 			jqueryMap.$statusBar.html("Ready");
-			jqueryMap.$statusBar.removeClass("loading");
 		}
 	}
 
@@ -65,14 +112,15 @@ canvasext.popup = (function(){
 			var $cbox = cboxes[i];
 			
 			var url = stateMap.host + "/" + $cbox.attr('url');			
-			var fileTitle = $cbox.attr('title');
+			var fileTitle = $cbox.attr('title');			
 			var module = $cbox.attr('module');
+			var savePath = "";
 			if (configMap.downloadToModuleFolder){
-				var savePath = "canvasext/" + fileTitle;
+				savePath = "canvas_download/" + canvasext.sanitize.sanitize(module, "-") + "/" + fileTitle;
 			} else {
-				
+				savePath = "canvas_download/" + fileTitle;
 			}
-
+			
 			console.log("Saving to %s", savePath);
 			var shown = false;
 			chrome.downloads.download({"url": url,
@@ -85,7 +133,6 @@ canvasext.popup = (function(){
 											  shown = true;
 										  }
 									  });
-		
 		}
 	}
 
@@ -94,19 +141,26 @@ canvasext.popup = (function(){
 		var checked = $(event.target).prop("checked");
 		for (var moduleName in jqueryMap.moduleCboxes){
 			for (i in jqueryMap.moduleCboxes[moduleName]){
+				if (jqueryMap.moduleCboxes[moduleName][i].prop('disabled')) continue;
+
 				jqueryMap.moduleCboxes[moduleName][i].prop('checked', checked);				
 			}
 		}
 	}
 
-	function createCheckBoxes(moduleIDMap){
+	function createCheckBoxes(moduleIDMap, idTitleMap){
+		setLoadingStatus(true);
+		
 		stateMap.moduleIdMap = moduleIDMap;
+		stateMap.idTitleMap = idTitleMap;
 		//for each module, add the module div
 		//for each file, add the checkbox
 		jqueryMap.modules = {};
 		jqueryMap.moduleCboxes = {};
 
 		var moduleTitle;
+		var count = Object.getOwnPropertyNames(idTitleMap).length;
+		
 		for (moduleTitle in moduleIDMap){
 			if (!moduleIDMap.hasOwnProperty(moduleTitle)) continue;
 			
@@ -117,6 +171,12 @@ canvasext.popup = (function(){
 			$moduleDiv.find(".module-title").html(moduleTitle);
 			$moduleCheckboxContainer = $moduleDiv.find(".module-file-container");
 			
+			function updateLoadingStatus(){
+				--count;
+				if (count < 1){
+					setLoadingStatus(false);
+				}
+			}
 			
 			for (i in fileIDs){
 				//Create a closure around some variables since the ajax call is async
@@ -134,28 +194,32 @@ canvasext.popup = (function(){
 								$downloadCbox.attr("module", moduleTitle);
 
 								var link = $(data).find("#content").find("a")[0];
-								//TODO: Handle this more gracefully - display an uncheckable item
-								var linkError = false;
+								var linkTitle;
+
 								if (!link){
 									console.log("Error: Cannot find link from %s",itemUrl);
-									linkError = true;
-									
-
+									linkUrl = "";
+									linkTitle = stateMap.idTitleMap[fileID] + "(Cannot Download)";
+									$downloadItem.addClass("download-error");
+									$downloadCbox.attr("disabled", "disabled");
 								} else {
-									var linkUrl = link.attributes["href"].value;
-									var linkTitle = link.text;
-									linkTitle = linkTitle.replace(RegExp("^Download ?"),""); 
-									$downloadItem.find(".download-title").html(linkTitle);
-									$downloadCbox.attr("url", linkUrl);
-									$downloadCbox.attr("title", linkTitle);
-									$moduleCheckboxContainer.append($downloadItem);
-									jqueryMap.moduleCboxes[moduleTitle].push($downloadCbox);
+									var linkUrl = link.attributes["href"].value;								
+									//Set the link title to the name from the anchor, because it has the extension in it (ie '.pdf')
+									linkTitle = link.text.replace(RegExp("^Download ?"), "");
 								}
+
+								$downloadItem.find(".download-title").html(linkTitle);
+								$downloadCbox.attr("url", linkUrl);
+								$downloadCbox.attr("title", linkTitle);
+								$moduleCheckboxContainer.append($downloadItem);
+								jqueryMap.moduleCboxes[moduleTitle].push($downloadCbox);
+
 								//strip the "Download " prefix off the title
-								
+								updateLoadingStatus();
 							},
 							error: function(jqXHR, textStatus, errorThrown){
 								console.log("Error getting download from %s", url);
+								updateLoadingStatus();
 							}
 						});
 					}
@@ -210,11 +274,12 @@ canvasext.popup = (function(){
 
 	function initModule(){
 		setJqueryMap();
-		setLoadingStatus(true);
 
 		//setup event handlers
 		jqueryMap.$downloadBtn.click(handleDownloadButtonClick);
 		jqueryMap.$downloadAllCbox.change(handleAllCboxChanged);
+		
+		
 		//Ask for all the module URLS from the page
 		chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
 			stateMap.current_tab = tabs[0];
@@ -222,10 +287,10 @@ canvasext.popup = (function(){
 			chrome.tabs.sendMessage(tabs[0].id, {type: "getFileIDs"}, function(response){
 
 				if (response && response.fileIDs){
-					stateMap.fileIDs = response.fileIDs;
-					console.log(response.fileIDs);
+					stateMap.course_title = response.courseTitle;
 					stateMap.course_id = configMap.course_regex.exec(tabs[0].url)[1];
-					createCheckBoxes(response.fileIDs);
+					createCheckBoxes(response.fileIDs, response.fileTitles);
+
 				} else {
 					setNoFilesAvailable();
 				}
