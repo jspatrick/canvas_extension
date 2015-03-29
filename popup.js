@@ -2,8 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-
-
 var canvasext = {};
 
 
@@ -78,7 +76,8 @@ canvasext.popup = (function(){
 
 	//Tracks various other states on the page.
 	var stateMap = {
-		host: "https://courses.gsb.stanford.edu" // placeholder.  Should be replaced by code to get it
+		host: "https://courses.gsb.stanford.edu", // placeholder.  Should be replaced by code to get it
+		opening_ids: []
 
 	};
 
@@ -103,10 +102,21 @@ canvasext.popup = (function(){
 	 */
 	
 	function handleDownloadButtonClick(event){
-		console.log("Downloading...");
-		console.log(event);
-		cboxes = getCheckedItems();
 
+		//Setup download change event
+		chrome.downloads.onChanged.addListener(function(delta){
+			if (!delta.state || delta.state.current != 'complete') return;
+			var ids = stateMap.opening_ids;
+			if (ids.indexOf(delta.id) < 0) return;
+			
+			chrome.downloads.show(delta.id);
+
+			ids.splice(ids.indexOf(delta.id),1);
+			stateMap.opening_ids = ids;
+		});
+
+		cboxes = getCheckedItems();
+		var count = cboxes.length;
 		fileUrls = new Array();
 		for (i in cboxes){
 			var $cbox = cboxes[i];
@@ -115,6 +125,7 @@ canvasext.popup = (function(){
 			var fileTitle = $cbox.attr('title');			
 			var module = $cbox.attr('module');
 			var savePath = "";
+
 			if (configMap.downloadToModuleFolder){
 				savePath = "canvas_download/" + canvasext.sanitize.sanitize(module, "-") + "/" + fileTitle;
 			} else {
@@ -122,15 +133,17 @@ canvasext.popup = (function(){
 			}
 			
 			console.log("Saving to %s", savePath);
-			var shown = false;
+
+			
 			chrome.downloads.download({"url": url,
 									   "filename": savePath,
 									   "saveAs": false},
 									  function(downloadId) {
-										  console.log("Downloaded %i", downloadId);
-										  if (!shown){
-											  chrome.downloads.show(downloadId);
-											  shown = true;
+										  --count;
+										  console.log("Count: %i", count);
+										  if (count <= 0){
+											  //show the last file
+											  stateMap.opening_ids.push(downloadId);											  
 										  }
 									  });
 		}
@@ -184,6 +197,7 @@ canvasext.popup = (function(){
 					function result (){
 						
 						itemUrl = stateMap.host + "/courses/" + stateMap.course_id + "/modules/items/" + fileID;
+
 
 						$.ajax({
 							type: 'GET',
