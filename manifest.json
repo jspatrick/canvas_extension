@@ -2,8 +2,8 @@
 	"manifest_version": 2,
 
 	"name": "GSB Canvas Toolkit",
-	"description": "This extension adds functionality to Canvas that Canvas would like to charge a bunch of money for",
-	"version": "1.0",
+	"description": "This extension helps students batch-download files from Canvas modules.",
+	"version": "0.5",
 
 	"content_scripts": [
 		{
