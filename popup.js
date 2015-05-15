@@ -3,7 +3,7 @@
 // found in the LICENSE file.
 
 var canvasext = {};
-
+console.log("popup reloaded");
 
 //sanitize from https://github.com/parshap/node-sanitize-filename/
 canvasext.sanitize = (function(){
@@ -31,16 +31,16 @@ canvasext.sanitize = (function(){
 	 * @return {String}         Sanitized filename
 	 */
 
-	var illegalRe = /[\/\?<>\\:\*\|":]/g;
+	var illegalRe = /[\/\?\+<>\\:\*\|":]/g;
 	var controlRe = /[\x00-\x1f\x80-\x9f]/g;
-	var reservedRe = /^\.+$/;
+	//var reservedRe = /^\.+$/;
 	var windowsReservedRe = /^(con|prn|aux|nul|com[0-9]|lpt[0-9])(\..*)?$/i;
 
 	function sanitize(input, replacement) {
 		return input
 			.replace(illegalRe, replacement)
 			.replace(controlRe, replacement)
-			.replace(reservedRe, replacement)
+			//.replace(reservedRe, replacement)
 			.replace(windowsReservedRe, replacement);
 	}
 	
@@ -51,7 +51,6 @@ canvasext.sanitize = (function(){
 
 canvasext.popup = (function(){
 	var configMap = {
-		downloadToModuleFolder: true,						  
 		course_regex: new RegExp("/?courses/([0-9]+)/.*"),
 		loading_color: "rgb(255, 195, 102)",
 		ready_color: "#aaaaaa",
@@ -102,7 +101,7 @@ canvasext.popup = (function(){
 	 */
 	
 	function handleDownloadButtonClick(event){
-
+		console.log("Downloading...");
 		//Setup download change event
 		chrome.downloads.onChanged.addListener(function(delta){
 			if (!delta.state || delta.state.current != 'complete') return;
@@ -118,34 +117,50 @@ canvasext.popup = (function(){
 		cboxes = getCheckedItems();
 		var count = cboxes.length;
 		fileUrls = new Array();
+		downloadErrors = new Array();
+
 		for (i in cboxes){
 			var $cbox = cboxes[i];
 			
-			var url = stateMap.host + "/" + $cbox.attr('url');			
-			var fileTitle = $cbox.attr('title');			
-			var module = $cbox.attr('module');
+			var url = stateMap.host + "/" + $cbox.attr('url');
+			var fileTitle = $cbox.attr('title').trim(); //found some files with whitespace after the extension that will cause a save error if untrimmed
+			var module = $cbox.attr('module').trim();
 			var savePath = "";
 
-			if (configMap.downloadToModuleFolder){
-				savePath = "canvas_download/" + canvasext.sanitize.sanitize(module, "-") + "/" + fileTitle;
-			} else {
-				savePath = "canvas_download/" + fileTitle;
-			}
+
+			savePath = "canvas_download/"
+				+ canvasext.sanitize.sanitize(stateMap.course_title, "-") + "/" 
+				+ canvasext.sanitize.sanitize(module, "-") + "/" 
+				+ canvasext.sanitize.sanitize(fileTitle, "-");
 			
 			console.log("Saving to %s", savePath);
 
-			
-			chrome.downloads.download({"url": url,
-									   "filename": savePath,
-									   "saveAs": false},
-									  function(downloadId) {
-										  --count;
-										  console.log("Count: %i", count);
-										  if (count <= 0){
-											  //show the last file
-											  stateMap.opening_ids.push(downloadId);											  
-										  }
-									  });
+			(function x (savePath){
+				chrome.downloads.download({"url": url,
+										   "filename": savePath,
+										   "saveAs": false},
+										  function(downloadId) {
+											  --count;
+											  if (!downloadId){
+												  console.log("Error downloading %s", savePath);
+												  downloadErrors.push(savePath);
+												  console.log(chrome.runtime.lastError);
+											  }
+											  
+											  if (count <= 0){
+												  console.log("Downloaded %s", savePath);
+												  //show the last file
+												  stateMap.opening_ids.push(downloadId);
+												  //show any errors
+												  if (downloadErrors.length){
+													  var errStr = "Some files could not be downloaded; please download them manually:\n";
+													  errStr += downloadErrors.join("\n");
+													  alert(errStr);
+												  }
+											  }	  
+											  
+										  });
+			})(savePath);
 		}
 	}
 
@@ -247,7 +262,6 @@ canvasext.popup = (function(){
 			jqueryMap.$moduleContainer.append($moduleDiv);
 			jqueryMap.modules[moduleTitle] = $moduleDiv;
 		}
-		console.log(Object.keys(stateMap.moduleIdMap));
 	}
 
 
@@ -299,7 +313,6 @@ canvasext.popup = (function(){
 			stateMap.current_tab = tabs[0];
 
 			chrome.tabs.sendMessage(tabs[0].id, {type: "getFileIDs"}, function(response){
-
 				if (response && response.fileIDs){
 					stateMap.course_title = response.courseTitle;
 					stateMap.course_id = configMap.course_regex.exec(tabs[0].url)[1];
