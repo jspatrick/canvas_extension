@@ -58,10 +58,7 @@ canvasext.parse = (function(){
 		console.log(stateMap.fileIDs);
 
 		//get the course title
-		var courseTitle = $.trim($(".h1").contents().filter(function() {
-			return this.nodeType === 3;
-		}).text());
-		
+		var courseTitle = $("#section-tabs-header").text().trim();
 		
 		chrome.runtime.onMessage.addListener(
 			function(request, sender, sendResponse){

@@ -1,9 +1,10 @@
 {
 	"manifest_version": 2,
-
 	"name": "GSB Canvas Toolkit",
 	"description": "This extension helps students batch-download files from Canvas modules.",
-	"version": "0.5",
+	"icons": {"32": "icon_32.png",
+			  "64": "icon_64.png"},
+	"version": "0.6",
 
 	"content_scripts": [
 		{
@@ -12,7 +13,7 @@
 		}
 	],
 	"browser_action": {
-		"default_icon": "icon.png",
+		"default_icon": "icon_32.png",
 		"default_popup": "popup.html",
 		"default_title": "Download Canvas Files"
 	},

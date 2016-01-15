@@ -77,7 +77,6 @@ canvasext.popup = (function(){
 	var stateMap = {
 		host: "https://courses.gsb.stanford.edu", // placeholder.  Should be replaced by code to get it
 		opening_ids: []
-
 	};
 
 	/*
@@ -104,9 +103,11 @@ canvasext.popup = (function(){
 		console.log("Downloading...");
 		//Setup download change event
 		chrome.downloads.onChanged.addListener(function(delta){
-			if (!delta.state || delta.state.current != 'complete') return;
+			if (!delta.state || delta.state.current != 'complete') 
+				return;
 			var ids = stateMap.opening_ids;
-			if (ids.indexOf(delta.id) < 0) return;
+			if (ids.indexOf(delta.id) < 0) 
+				return;
 			
 			chrome.downloads.show(delta.id);
 
@@ -315,6 +316,9 @@ canvasext.popup = (function(){
 			chrome.tabs.sendMessage(tabs[0].id, {type: "getFileIDs"}, function(response){
 				if (response && response.fileIDs){
 					stateMap.course_title = response.courseTitle;
+					if (stateMap.course_title == ""){
+						stateMap.course_title = "no_title";
+					}
 					stateMap.course_id = configMap.course_regex.exec(tabs[0].url)[1];
 					createCheckBoxes(response.fileIDs, response.fileTitles);
 
