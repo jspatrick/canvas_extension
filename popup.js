@@ -122,8 +122,8 @@ canvasext.popup = (function(){
 
 		for (i in cboxes){
 			var $cbox = cboxes[i];
-			
-			var url = stateMap.host + "/" + $cbox.attr('url');
+
+			var url = $cbox.attr('url');
 			var fileTitle = $cbox.attr('title').trim(); //found some files with whitespace after the extension that will cause a save error if untrimmed
 			var module = $cbox.attr('module').trim();
 			var savePath = "";
@@ -133,10 +133,11 @@ canvasext.popup = (function(){
 				+ canvasext.sanitize.sanitize(stateMap.course_title, "-") + "/" 
 				+ canvasext.sanitize.sanitize(module, "-") + "/" 
 				+ canvasext.sanitize.sanitize(fileTitle, "-");
+
 			
 			console.log("Saving to %s", savePath);
 
-			(function x (savePath){
+			(function (savePath){
 				chrome.downloads.download({"url": url,
 										   "filename": savePath,
 										   "saveAs": false},
@@ -161,7 +162,7 @@ canvasext.popup = (function(){
 											  }	  
 											  
 										  });
-			})(savePath);
+			}(savePath));
 		}
 	}
 
@@ -177,11 +178,12 @@ canvasext.popup = (function(){
 		}
 	}
 
-	function createCheckBoxes(moduleIDMap, idTitleMap){
+	function createCheckBoxes(moduleIDMap, idTitleMap, idTypeMap){
 		setLoadingStatus(true);
-		
+		console.log(moduleIDMap);
 		stateMap.moduleIdMap = moduleIDMap;
 		stateMap.idTitleMap = idTitleMap;
+		stateMap.idTypeMap = idTypeMap;
 		//for each module, add the module div
 		//for each file, add the checkbox
 		jqueryMap.modules = {};
@@ -189,7 +191,14 @@ canvasext.popup = (function(){
 
 		var moduleTitle;
 		var count = Object.getOwnPropertyNames(idTitleMap).length;
+		function updateLoadingStatus(){
+			--count;
+			if (count < 1){
+				setLoadingStatus(false);
+			}
+		}
 		
+		console.log("loading modules...");
 		for (moduleTitle in moduleIDMap){
 			if (!moduleIDMap.hasOwnProperty(moduleTitle)) continue;
 			
@@ -200,64 +209,84 @@ canvasext.popup = (function(){
 			$moduleDiv.find(".module-title").html(moduleTitle);
 			$moduleCheckboxContainer = $moduleDiv.find(".module-file-container");
 			
-			function updateLoadingStatus(){
-				--count;
-				if (count < 1){
-					setLoadingStatus(false);
-				}
-			}
-			
+			console.log(fileIDs);
 			for (i in fileIDs){
+				
 				//Create a closure around some variables since the ajax call is async
-				function setupCheckbox(fileID, moduleTitle, $moduleCheckboxContainer){
-					function result (){
+				(function(fileID, moduleTitle, $moduleCheckboxContainer){
+					console.log("Adding %s", fileID);
+					var itemUrl = stateMap.host + "/courses/" + stateMap.course_id + "/modules/items/" + fileID;
+					var itemType = idTypeMap[fileID];
+					
+					var $downloadItem = $(configMap.item_html);
+					var $downloadCbox = $downloadItem.find("input");
+					$downloadCbox.attr("module", moduleTitle);
+					$moduleCheckboxContainer.append($downloadItem);
+					jqueryMap.moduleCboxes[moduleTitle].push($downloadCbox);
+					
+					if (itemType == "External Url"){						
+						linkUrl = fileID; // Currently using the url as the resource ID
+						var linkTitle = stateMap.idTitleMap[fileID];						
+						//Some external links are actual files.  Files are directly linked by URL,
+						//And we can actually download these						
+						if (linkUrl.substr(0,4) == "http"){							
+							$downloadCbox.attr("url", linkUrl);
+							$downloadCbox.attr("title", linkTitle + ".pdf");
+							$downloadItem.find(".download-title").html(linkTitle + ".pdf");							
+						} else {							
+							$downloadCbox.attr("title", linkTitle + "(Cannot Dowonload External Link)");
+							$downloadItem.addClass("download-error");
+							$downloadItem.find(".download-title").html(linkTitle + "(Cannot Download External Link)");
+							$downloadCbox.attr("disabled", "disabled");							
+						}
+							updateLoadingStatus();
 						
-						itemUrl = stateMap.host + "/courses/" + stateMap.course_id + "/modules/items/" + fileID;
+					} else if (itemType == "Attachment"){
+						var attachmentRetreive = function(data, textStatus, xhr){
 
+							var link = $(data).find("#content").find("a")[0];
+							var linkTitle;
 
+							if (!link){
+								console.log("Error: Cannot find link from %s",itemUrl);
+								linkUrl = "";
+								linkTitle = stateMap.idTitleMap[fileID] + "(Cannot Download)";
+								$downloadItem.addClass("download-error");
+								$downloadCbox.attr("disabled", "disabled");
+							} else {
+								var linkUrl = stateMap.host + "/" + link.attributes["href"].value;								
+								//Set the link title to the name from the anchor, because it has the extension in it (ie '.pdf')
+								linkTitle = link.text.replace(RegExp("^Download ?"), "");
+							}
+
+							$downloadItem.find(".download-title").html(linkTitle);
+							$downloadCbox.attr("url", linkUrl);
+							$downloadCbox.attr("title", linkTitle);
+
+							//strip the "Download " prefix off the title
+							updateLoadingStatus();
+						};
+					
 						$.ajax({
 							type: 'GET',
 							url: itemUrl,
-							success: function(data, textStatus, xhr){
-								var $downloadItem = $(configMap.item_html);
-								var $downloadCbox = $downloadItem.find("input");
-								$downloadCbox.attr("module", moduleTitle);
-
-								var link = $(data).find("#content").find("a")[0];
-								var linkTitle;
-
-								if (!link){
-									console.log("Error: Cannot find link from %s",itemUrl);
-									linkUrl = "";
-									linkTitle = stateMap.idTitleMap[fileID] + "(Cannot Download)";
-									$downloadItem.addClass("download-error");
-									$downloadCbox.attr("disabled", "disabled");
-								} else {
-									var linkUrl = link.attributes["href"].value;								
-									//Set the link title to the name from the anchor, because it has the extension in it (ie '.pdf')
-									linkTitle = link.text.replace(RegExp("^Download ?"), "");
-								}
-
-								$downloadItem.find(".download-title").html(linkTitle);
-								$downloadCbox.attr("url", linkUrl);
-								$downloadCbox.attr("title", linkTitle);
-								$moduleCheckboxContainer.append($downloadItem);
-								jqueryMap.moduleCboxes[moduleTitle].push($downloadCbox);
-
-								//strip the "Download " prefix off the title
-								updateLoadingStatus();
-							},
+							success: attachmentRetreive,
 							error: function(jqXHR, textStatus, errorThrown){
 								console.log("Error getting download from %s", url);
 								updateLoadingStatus();
 							}
 						});
-					}
-					return result;
-				};
+					} else {
 
-				var fileID = fileIDs[i];
-				setupCheckbox(fileID, moduleTitle, $moduleCheckboxContainer)();
+						var linkTitle = stateMap.idTitleMap[fileID] + "(Cannot Download)";
+						$downloadItem.find(".download-title").html(linkTitle);
+						$downloadCbox.attr("title", linkTitle);
+						$downloadItem.addClass("download-error");
+						$downloadCbox.attr("disabled", "disabled");							
+						updateLoadingStatus();
+						
+					}
+				}(fileIDs[i], moduleTitle, $moduleCheckboxContainer));
 			}
 
 			jqueryMap.$moduleContainer.append($moduleDiv);
@@ -314,13 +343,15 @@ canvasext.popup = (function(){
 			stateMap.current_tab = tabs[0];
 
 			chrome.tabs.sendMessage(tabs[0].id, {type: "getFileIDs"}, function(response){
+				console.log(response);
+				
 				if (response && response.fileIDs){
 					stateMap.course_title = response.courseTitle;
 					if (stateMap.course_title == ""){
 						stateMap.course_title = "no_title";
 					}
 					stateMap.course_id = configMap.course_regex.exec(tabs[0].url)[1];
-					createCheckBoxes(response.fileIDs, response.fileTitles);
+					createCheckBoxes(response.fileIDs, response.fileTitles, response.fileTypes);
 
 				} else {
 					setNoFilesAvailable();
